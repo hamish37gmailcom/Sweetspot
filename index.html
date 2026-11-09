@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<title>Sweet Spot Finder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Semi+Condensed:wght@500;700&display=swap">
+<style>
+/* Layout: one narrow instrument column, phone first. Readout on top, gauge, then plots and settings. */
+:root {
+  --bg: #eef1f2; --panel: #ffffff; --fg: #142027; --muted: #5a6971; --line: #d2dadd;
+  --ink: #1d3c48; --ink-fg: #ffffff;
+  --chL: #08757e; --chR: #bf5014;
+  --ok: #2b7a3a; --warn: #a56300; --bad: #b3261e;
+  --f-display: "Saira Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1417; --panel: #162026; --fg: #e4ebee; --muted: #93a3ab; --line: #2a373e;
+  --ink: #a9d7dd; --ink-fg: #0e1417; --chL: #3fc3cb; --chR: #f28d4f;
+  --ok: #6cc77c; --warn: #e3a54a; --bad: #f2867e; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0e1417; --panel: #162026; --fg: #e4ebee; --muted: #93a3ab; --line: #2a373e;
+  --ink: #a9d7dd; --ink-fg: #0e1417; --chL: #3fc3cb; --chR: #f28d4f;
+  --ok: #6cc77c; --warn: #e3a54a; --bad: #f2867e; color-scheme: dark }
+
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 760px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: 30px; letter-spacing: .01em; margin: 0; line-height: 1.1; text-wrap: balance; }
+h2 { font-family: var(--f-display); font-weight: 500; font-size: 19px; margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 65ch; }
+.sub { color: var(--muted); }
+.lab { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.mono, .num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.tabs button { appearance: none; border: 0; background: transparent; color: var(--fg); font: 500 14px var(--f-body); padding: 10px 6px; cursor: pointer; line-height: 1.25; }
+.tabs button + button { border-left: 1px solid var(--line); }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--ink-fg); }
+.tabs small { display: block; font-size: 11px; opacity: .75; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { appearance: none; border: 1px solid var(--ink); background: var(--ink); color: var(--ink-fg); font: 600 15px var(--f-body); padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--ink); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn:focus-visible, .tabs button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--chL); outline-offset: 2px; }
+label.f { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+input[type=number], select { font: 15px var(--f-mono); padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); width: 7.5em; }
+input[type=range] { width: 180px; accent-color: var(--ink); }
+.note { font-size: 13px; color: var(--muted); }
+.msg { font-size: 14px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
+.msg.bad { border-color: var(--bad); color: var(--bad); }
+.msg.ok { border-color: var(--ok); color: var(--ok); }
+
+.readout { display: grid; gap: 4px; }
+.big { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: clamp(40px, 13vw, 64px); font-weight: 500; line-height: 1; letter-spacing: -.02em; }
+.big .u { font-size: .32em; color: var(--muted); letter-spacing: 0; margin-left: .3em; }
+.advice { font-family: var(--f-display); font-size: 21px; font-weight: 500; }
+.advice.ok { color: var(--ok); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 16px; }
+.stats div { display: grid; gap: 2px; min-width: 0; }
+.stats .num { font-size: 16px; }
+
+.gauge { position: relative; height: 54px; }
+.gauge .track { position: absolute; left: 0; right: 0; top: 18px; height: 14px; border-radius: 7px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.gauge .zone { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--ok) 28%, transparent); }
+.gauge .tick { position: absolute; top: 34px; transform: translateX(-50%); font: 11px var(--f-mono); color: var(--muted); }
+.gauge .tick::before { content: ""; position: absolute; left: 50%; top: -18px; width: 1px; height: 14px; background: var(--line); }
+.gauge .needle { position: absolute; top: 10px; width: 4px; height: 30px; margin-left: -2px; border-radius: 2px; background: var(--fg); transition: left .25s ease; }
+.gauge .ends { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.gauge .ends span:first-child { color: var(--chL); } .gauge .ends span:last-child { color: var(--chR); }
+
+canvas { width: 100%; display: block; border-radius: 8px; background: var(--bg); }
+.legend { display: flex; gap: 16px; font-size: 13px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+.flip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.flip div { display: grid; gap: 2px; }
+.meter { height: 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; width: 160px; }
+.meter b { display: block; height: 100%; width: 0; background: var(--chL); transition: width .15s; }
+details summary { cursor: pointer; font-weight: 600; }
+details[open] summary { margin-bottom: 8px; }
+ol, ul { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; max-width: 65ch; }
+@media (prefers-reduced-motion: reduce) { .gauge .needle, .meter b { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header style="display:grid;gap:6px">
+    <h1>Sweet Spot Finder</h1>
+    <p class="sub">Measures how much later one speaker's sound reaches the microphone than the other's, to a fraction of a sample at 48&nbsp;kHz. Zero means you're on the plane halfway between the speakers.</p>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-play" aria-selected="true">Play<small>on the Mac</small></button>
+    <button role="tab" id="tab-listen" aria-selected="false">Listen live<small>on the iPhone</small></button>
+    <button role="tab" id="tab-file" aria-selected="false">Recording<small>upload &amp; analyse</small></button>
+  </div>
+
+  <!-- PLAY -->
+  <section class="panel" id="p-play">
+    <h2>Test signal</h2>
+    <p>A one-second loop. The left channel plays a rising sweep (1.5–16&nbsp;kHz, 100&nbsp;ms) and the right channel plays the same sweep backwards, exactly half a second later. Everything stays above the subwoofer's range.</p>
+    <div class="row">
+      <button class="btn" id="playBtn">Play test signal</button>
+      <label class="f">Level <span><input type="range" id="lvl" min="-40" max="-6" step="1" value="-18"> <span class="mono" id="lvlv">−18 dBFS</span></span></label>
+    </div>
+    <div class="note" id="playInfo">Plays through this computer's current audio output. Turn BACCH off first, and start with the volume low.</div>
+    <hr style="border:0;border-top:1px solid var(--line);margin:0">
+    <h2>Or download it</h2>
+    <p class="note">If your filters run inside a music player rather than on the system output, play this 60-second file from that player on repeat. 16-bit stereo WAV.</p>
+    <div class="row">
+      <label class="f">Sample rate <select id="wavRate"><option value="44100">44.1 kHz</option><option value="48000" selected>48 kHz</option><option value="88200">88.2 kHz</option><option value="96000">96 kHz</option></select></label>
+      <button class="btn ghost" id="dlBtn" style="align-self:end">Download WAV</button>
+    </div>
+    <div class="note" id="dlMsg"></div>
+  </section>
+
+  <!-- LISTEN -->
+  <section class="panel" id="p-listen" hidden>
+    <h2>Listen with the microphone</h2>
+    <p class="note">The iPhone's microphone is on its bottom edge, beside the charging port. Hold the phone flat at ear height with the bottom edge pointing at the midpoint between the speakers. A tripod phone clamp helps a lot.</p>
+    <div class="row">
+      <button class="btn" id="listenBtn">Start listening</button>
+      <span class="lab">Input</span><span class="meter"><b id="meter"></b></span><span class="mono note" id="meterTxt">—</span>
+    </div>
+    <div class="msg" id="listenMsg" hidden></div>
+  </section>
+
+  <!-- FILE -->
+  <section class="panel" id="p-file" hidden>
+    <h2>Analyse a recording</h2>
+    <ol class="note">
+      <li>In Settings › Apps › Voice Memos, set Audio Quality to Lossless and turn Stereo Recording off.</li>
+      <li>With the test signal playing, record 10–20 seconds with the phone held still.</li>
+      <li>Share the memo to Files, then choose it here.</li>
+    </ol>
+    <div class="row"><input type="file" id="fileIn" accept="audio/*,.m4a,.wav,.aif,.aiff,.caf"></div>
+    <div class="msg" id="fileMsg" hidden></div>
+  </section>
+
+  <!-- RESULTS -->
+  <section class="panel" id="results">
+    <div class="row" style="justify-content:space-between">
+      <span class="lab" id="resSrc">Example reading</span>
+      <button class="btn ghost" id="clearBtn" style="padding:6px 12px;font-size:13px">Clear history</button>
+    </div>
+    <div class="readout">
+      <span class="lab">Right arrives later by</span>
+      <div class="big" id="bigNum">+0.62<span class="u">samples @ 48 kHz</span></div>
+      <div class="advice" id="advice">Move 4.4 mm toward the right speaker</div>
+    </div>
+    <div class="gauge" id="gauge" aria-label="Your position relative to the sweet spot">
+      <div class="ends"><span>◀ left speaker side</span><span>right speaker side ▶</span></div>
+      <div class="track"><div class="zone" id="zone"></div></div>
+      <div id="ticks"></div>
+      <div class="needle" id="needle"></div>
+    </div>
+    <div class="stats">
+      <div><span class="lab">Time</span><span class="num" id="sUs">+12.9 µs</span></div>
+      <div><span class="lab">Path difference</span><span class="num" id="sMm">+4.4 mm</span></div>
+      <div><span class="lab">Mean of last 10</span><span class="num" id="sMean">+0.60</span></div>
+      <div><span class="lab">Spread (s.d.)</span><span class="num" id="sSd">0.04</span></div>
+      <div><span class="lab">Signal / noise</span><span class="num" id="sSnr">41 dB</span></div>
+      <div><span class="lab">Clock offset</span><span class="num" id="sPpm">+18 ppm</span></div>
+    </div>
+
+    <div style="display:grid;gap:6px">
+      <div class="row" style="justify-content:space-between"><span class="lab">History (samples @ 48 kHz)</span><span class="note mono" id="hCount"></span></div>
+      <canvas id="cvHist" height="110"></canvas>
+    </div>
+
+    <div style="display:grid;gap:6px">
+      <div class="row" style="justify-content:space-between">
+        <span class="lab">Direct sound, aligned on the left arrival</span>
+        <div class="legend"><span><i style="background:var(--chL)"></i>Left</span><span><i style="background:var(--chR)"></i>Right</span></div>
+      </div>
+      <canvas id="cvZoom" height="200"></canvas>
+      <div class="note">Dots are individual samples. If the speakers match, the two traces should have the same shape, offset by the reading above.</div>
+    </div>
+
+    <div style="display:grid;gap:6px">
+      <span class="lab">Impulse response envelope, first 30 ms (dB)</span>
+      <canvas id="cvEnv" height="200"></canvas>
+      <div class="note">Peaks after the first one are reflections from the floor, ceiling and walls. A reflection that's stronger on one side shows where the room is asymmetric.</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Cancel the phone's own offset</h2>
+    <p class="note">The microphone sits about 1–2&nbsp;cm to one side of the phone's centre line, which biases a single reading. Take one reading face up and one face down in the same spot. The average is the reading at the phone's centre.</p>
+    <div class="row">
+      <button class="btn ghost" id="flipA">Use mean as face up</button>
+      <button class="btn ghost" id="flipB">Use mean as face down</button>
+    </div>
+    <div class="flip">
+      <div><span class="lab">Face up</span><span class="num mono" id="fA">—</span></div>
+      <div><span class="lab">Face down</span><span class="num mono" id="fB">—</span></div>
+      <div><span class="lab">Corrected</span><span class="num mono" id="fC">—</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Geometry</h2>
+    <div class="row">
+      <label class="f">Angle between speakers (°)<input type="number" id="angle" value="60" min="10" max="150" step="1"></label>
+      <label class="f">Room temperature (°C)<input type="number" id="temp" value="21" min="0" max="40" step="1"></label>
+    </div>
+    <p class="note" id="geoNote"></p>
+    <details>
+      <summary>How the measurement works</summary>
+      <ul class="note">
+        <li>Each sweep is matched-filtered against its reference, which gives that speaker's impulse response. The rising and falling sweeps have the same spectrum, so neither channel is biased.</li>
+        <li>Sub-sample timing comes from cross-correlating the left and right direct-sound windows (−0.5 to +1.5 ms around the peak), upsampled ×16.</li>
+        <li>The phone and the Mac run on separate clocks, which differ by tens of ppm. Each reading uses three consecutive bursts (L-R-L or R-L-R) and takes half the difference of the two intervals, which cancels the clock difference.</li>
+        <li>The reading includes any delay difference inside the playback chain. With identical speakers and no per-channel delay, zero is the geometric centre plane.</li>
+      </ul>
+    </details>
+  </section>
+</div>
+
+<script id="dsp">
+// ---------- Signal + DSP core (no DOM) ----------
+const SIG = { P: 1.0, T: 0.1, f1: 1500, f2: 16000, fade: 0.005 };
+
+function makeSweep(fs) {
+  const n = Math.round(SIG.T * fs), x = new Float32Array(n);
+  const k = (SIG.f2 - SIG.f1) / SIG.T, nf = Math.round(SIG.fade * fs);
+  for (let i = 0; i < n; i++) {
+    const t = i / fs;
+    let w = 1;
+    if (i < nf) w = 0.5 - 0.5 * Math.cos(Math.PI * i / nf);
+    else if (i > n - 1 - nf) w = 0.5 - 0.5 * Math.cos(Math.PI * (n - 1 - i) / nf);
+    x[i] = w * Math.sin(2 * Math.PI * (SIG.f1 * t + 0.5 * k * t * t));
+  }
+  return x;
+}
+function reversed(x) { const y = new Float32Array(x.length); for (let i = 0; i < x.length; i++) y[i] = x[x.length - 1 - i]; return y; }
+function nextPow2(n) { let p = 1; while (p < n) p <<= 1; return p; }
+
+const _fftT = {};
+function fftTables(N) {
+  if (_fftT[N]) return _fftT[N];
+  const bits = Math.round(Math.log2(N)), rev = new Uint32Array(N);
+  for (let i = 1; i < N; i++) rev[i] = (rev[i >> 1] >> 1) | ((i & 1) << (bits - 1));
+  const c = new Float64Array(N / 2), s = new Float64Array(N / 2);
+  for (let i = 0; i < N / 2; i++) { c[i] = Math.cos(2 * Math.PI * i / N); s[i] = Math.sin(2 * Math.PI * i / N); }
+  return (_fftT[N] = { rev, c, s });
+}
+function fft(re, im, inverse) {
+  const N = re.length, { rev, c, s } = fftTables(N);
+  for (let i = 0; i < N; i++) { const j = rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+  for (let size = 2; size <= N; size <<= 1) {
+    const half = size >> 1, step = N / size;
+    for (let i = 0; i < N; i += size) {
+      for (let j = 0, k = 0; j < half; j++, k += step) {
+        const wr = c[k], wi = inverse ? s[k] : -s[k];
+        const a = i + j, b = a + half;
+        const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+    }
+  }
+  if (inverse) for (let i = 0; i < N; i++) { re[i] /= N; im[i] /= N; }
+}
+
+const _refs = {};
+function refs(fs, N) {
+  const key = fs + ":" + N;
+  if (_refs[key]) return _refs[key];
+  const up = makeSweep(fs), dn = reversed(up);
+  const spec = x => { const r = new Float64Array(N), i = new Float64Array(N); r.set(x); fft(r, i, false); return { r, i }; };
+  return (_refs[key] = { L: up.length, U: spec(up), D: spec(dn) });
+}
+
+// Matched filter of y against both sweeps. Returns real correlation and envelope.
+function correlate(y, fs) {
+  const L = Math.round(SIG.T * fs), N = nextPow2(y.length + L), R = refs(fs, N);
+  const yr = new Float64Array(N), yi = new Float64Array(N);
+  for (let i = 0; i < y.length; i++) yr[i] = y[i];
+  fft(yr, yi, false);
+  const M = y.length - L + 1, out = {};
+  for (const [name, X] of [["L", R.U], ["R", R.D]]) {
+    const zr = new Float64Array(N), zi = new Float64Array(N);
+    for (let k = 0; k <= N / 2; k++) {
+      const g = (k === 0 || k === N / 2) ? 1 : 2;
+      const a = yr[k], b = yi[k], c = X.r[k], d = X.i[k];
+      zr[k] = g * (a * c + b * d); zi[k] = g * (b * c - a * d);
+    }
+    fft(zr, zi, true);
+    const cr = new Float32Array(M), env = new Float32Array(M);
+    for (let n = 0; n < M; n++) { cr[n] = zr[n]; env[n] = Math.hypot(zr[n], zi[n]); }
+    out[name] = { c: cr, e: env };
+  }
+  out.M = M;
+  return out;
+}
+
+// Find one arrival per burst: strongest peak, then the earliest strong peak just before it (direct sound).
+function findBursts(e, fs) {
+  let gmax = 0;
+  for (let i = 0; i < e.length; i++) if (e[i] > gmax) gmax = e[i];
+  if (!(gmax > 0)) return [];
+  const thr = 0.25 * gmax, sup = Math.round(0.3 * fs), back = Math.round(0.003 * fs);
+  const cand = [];
+  for (let i = 1; i < e.length - 1; i++) if (e[i] > thr && e[i] >= e[i - 1] && e[i] > e[i + 1]) cand.push(i);
+  cand.sort((a, b) => e[b] - e[a]);
+  const acc = [];
+  for (const i of cand) if (!acc.some(j => Math.abs(j - i) < sup)) acc.push(i);
+  return acc.map(p => {
+    for (let j = Math.max(1, p - back); j < p; j++) if (e[j] > 0.5 * e[p] && e[j] >= e[j - 1] && e[j] > e[j + 1]) return j;
+    return p;
+  }).sort((a, b) => a - b);
+}
+
+function segment(c, a, fs) {
+  const pre = Math.round(0.0005 * fs), post = Math.round(0.0015 * fs), n = pre + post;
+  const s = new Float64Array(n), taper = Math.max(1, Math.round(n * 0.2));
+  for (let i = 0; i < n; i++) {
+    const k = a - pre + i;
+    let w = 1;
+    if (i < taper) w = 0.5 - 0.5 * Math.cos(Math.PI * i / taper);
+    else if (i >= n - taper) w = 0.5 - 0.5 * Math.cos(Math.PI * (n - 1 - i) / taper);
+    s[i] = (k >= 0 && k < c.length) ? c[k] * w : 0;
+  }
+  return s;
+}
+
+// Lag d (in samples, fractional) such that b(t) ≈ a(t − d).
+function fineLag(a, b) {
+  const n = a.length, M = nextPow2(2 * n), U = 16, MU = M * U;
+  const ar = new Float64Array(M), ai = new Float64Array(M), br = new Float64Array(M), bi = new Float64Array(M);
+  ar.set(a); br.set(b);
+  fft(ar, ai, false); fft(br, bi, false);
+  const zr = new Float64Array(MU), zi = new Float64Array(MU);
+  for (let k = 0; k < M; k++) {
+    const pr = br[k] * ar[k] + bi[k] * ai[k], pi = bi[k] * ar[k] - br[k] * ai[k];
+    if (k < M / 2) { zr[k] = pr; zi[k] = pi; }
+    else if (k === M / 2) { zr[k] = pr / 2; zi[k] = pi / 2; zr[MU - k] = pr / 2; zi[MU - k] = -pi / 2; }
+    else { zr[MU - (M - k)] = pr; zi[MU - (M - k)] = pi; }
+  }
+  fft(zr, zi, true);
+  const lim = Math.floor(n / 2) * U;
+  let best = 0, bv = -Infinity;
+  for (let k = -lim; k <= lim; k++) { const v = zr[(k + MU) % MU]; if (v > bv) { bv = v; best = k; } }
+  const ym = zr[(best - 1 + MU) % MU], y0 = bv, yp = zr[(best + 1 + MU) % MU];
+  const den = ym - 2 * y0 + yp;
+  const frac = den !== 0 ? 0.5 * (ym - yp) / den : 0;
+  return (best + frac) / U;
+}
+
+// Analyse one block of mono audio. Returns drift-cancelled readings (delta = right minus left, in samples at fs).
+function analyzeBlock(y, fs) {
+  const L = Math.round(SIG.T * fs);
+  if (y.length < L * 2) return { readings: [] };
+  const C = correlate(y, fs);
+  const pl = findBursts(C.L.e, fs), pr = findBursts(C.R.e, fs);
+  const ev = pl.map(i => ({ k: "L", i })).concat(pr.map(i => ({ k: "R", i }))).sort((a, b) => a.i - b.i);
+  const half = SIG.P / 2 * fs, tol = 0.02 * fs;
+  const segOf = e => segment(C[e.k].c, e.i, fs);
+  const readings = [];
+  for (let j = 0; j + 2 < ev.length; j++) {
+    const e0 = ev[j], e1 = ev[j + 1], e2 = ev[j + 2];
+    if (e0.k !== e2.k || e0.k === e1.k) continue;
+    if (Math.abs(e1.i - e0.i - half) > tol || Math.abs(e2.i - e1.i - half) > tol) continue;
+    const s0 = segOf(e0), s1 = segOf(e1), s2 = segOf(e2);
+    const d1 = fineLag(s0, s1), d2 = fineLag(s1, s2);
+    const I1 = e1.i - e0.i + d1, I2 = e2.i - e1.i + d2;
+    const delta = e0.k === "L" ? (I1 - I2) / 2 : (I2 - I1) / 2;
+    const ppm = ((I1 + I2) / (SIG.P * fs) - 1) * 1e6;
+    // Plot alignment: x = 0 at the left arrival; right shifted so its features sit at +delta.
+    let aL, aR, shiftR;
+    if (e0.k === "L") { aL = e0.i; aR = e1.i; shiftR = -d1 + delta; }
+    else { aL = e1.i; aR = e0.i; shiftR = d1 + delta; }
+    readings.push({ delta, ppm, at: e0.i, aL, aR, shiftR });
+  }
+  // SNR: burst peak vs median envelope
+  let snr = null;
+  if (pl.length) {
+    const e = C.L.e, sorted = Float32Array.from(e).sort();
+    const med = sorted[Math.floor(sorted.length / 2)] || 1e-12;
+    snr = 20 * Math.log10(e[pl[0]] / med);
+  }
+  return { readings, C, snr, fs };
+}
+
+if (typeof module !== "undefined") module.exports = { SIG, makeSweep, reversed, analyzeBlock, fineLag, nextPow2 };
+</script>
+
+<script>
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("ssf." + k); return v === null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("ssf." + k, v); } catch (e) {} }
+};
+const fmtS = (v, d = 2) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// Tabs
+const tabs = ["play", "listen", "file"];
+function showTab(t) {
+  tabs.forEach(x => { $("tab-" + x).setAttribute("aria-selected", x === t); $("p-" + x).hidden = x !== t; });
+  store.set("tab", t);
+}
+tabs.forEach(t => $("tab-" + t).addEventListener("click", () => showTab(t)));
+showTab(store.get("tab", "play"));
+
+// Geometry
+$("angle").value = store.get("angle", "60");
+$("temp").value = store.get("temp", "21");
+function geo() {
+  const ang = Math.min(150, Math.max(10, +$("angle").value || 60)) * Math.PI / 180;
+  const T = +$("temp").value; const c = 331.3 * Math.sqrt(1 + (isFinite(T) ? T : 21) / 273.15);
+  return { c, k: 2 * Math.sin(ang / 2) };
+}
+function geoNote() {
+  const g = geo(), mmPerSample = g.c / 48000 * 1000;
+  $("geoNote").textContent = `Speed of sound ${g.c.toFixed(1)} m/s. One sample at 48 kHz is ${mmPerSample.toFixed(2)} mm of path difference, or ${(mmPerSample / g.k).toFixed(2)} mm of sideways movement at this angle.`;
+}
+["angle", "temp"].forEach(id => $(id).addEventListener("input", () => { store.set(id, $(id).value); geoNote(); renderReadout(); }));
+geoNote();
+
+// Ticks on gauge (range ±4 samples; needle shows where you are, not the delay)
+const GR = 4;
+(function () {
+  let h = "";
+  for (let v = -GR; v <= GR; v++) h += `<span class="tick" style="left:${(v + GR) / (2 * GR) * 100}%">${v === 0 ? "0" : Math.abs(v)}</span>`;
+  $("ticks").innerHTML = h;
+  $("zone").style.left = ((GR - 1) / (2 * GR) * 100) + "%";
+  $("zone").style.width = (2 / (2 * GR) * 100) + "%";
+})();
+
+// ---------- History / results ----------
+const state = { hist: [], last: null, source: "example", flipA: null, flipB: null };
+
+function toS48(r) { return r.delta / r.fs * 48000; }
+function meanLast(n) {
+  const v = state.hist.slice(-n).map(toS48);
+  if (!v.length) return null;
+  const m = v.reduce((a, b) => a + b, 0) / v.length;
+  const sd = v.length > 1 ? Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1)) : 0;
+  return { m, sd, n: v.length };
+}
+
+function renderReadout() {
+  const r = state.last;
+  if (!r) return;
+  const g = geo(), s48 = toS48(r), secs = r.delta / r.fs;
+  const pathMm = secs * g.c * 1000, moveMm = pathMm / g.k;
+  $("bigNum").innerHTML = `${fmtS(s48)}<span class="u">samples @ 48 kHz</span>`;
+  const st = meanLast(10);
+  const useV = st ? st.m : s48;
+  const adv = $("advice");
+  if (Math.abs(useV) < 0.5) { adv.textContent = "Centred to within half a sample"; adv.className = "advice ok"; }
+  else {
+    const mm = Math.abs(useV / 48000 * g.c * 1000 / g.k);
+    adv.textContent = `Move ${mm < 10 ? mm.toFixed(1) : mm.toFixed(0)} mm toward the ${useV > 0 ? "right" : "left"} speaker`;
+    adv.className = "advice";
+  }
+  $("sUs").textContent = fmtS(secs * 1e6, 1) + " µs";
+  $("sMm").textContent = fmtS(pathMm, 1) + " mm";
+  $("sMean").textContent = st ? fmtS(st.m) : "—";
+  $("sSd").textContent = st && st.n > 1 ? st.sd.toFixed(2) : "—";
+  $("sSnr").textContent = r.snr != null ? r.snr.toFixed(0) + " dB" : "—";
+  $("sPpm").textContent = fmtS(r.ppm, 0) + " ppm";
+  // Needle: listener position. R late (positive) means you are on the left side.
+  const pos = Math.max(-GR, Math.min(GR, -useV));
+  $("needle").style.left = ((pos + GR) / (2 * GR) * 100) + "%";
+  $("hCount").textContent = state.hist.length ? `${state.hist.length} readings` : "";
+}
+
+function pushReading(r, plotData) {
+  state.hist.push(r);
+  if (state.hist.length > 200) state.hist.shift();
+  state.last = r;
+  if (plotData) state.plot = plotData;
+  renderReadout(); drawAll();
+}
+
+function plotFrom(res, r) {
+  const fs = res.fs, C = res.C, pre = Math.round(0.002 * fs), post = Math.round(0.030 * fs);
+  const cut = (arr, a) => { const o = new Float32Array(pre + post); for (let i = 0; i < pre + post; i++) { const k = a - pre + i; o[i] = (k >= 0 && k < arr.length) ? arr[k] : 0; } return o; };
+  return { fs, pre, Lc: cut(C.L.c, r.aL), Le: cut(C.L.e, r.aL), Rc: cut(C.R.c, r.aR), Re: cut(C.R.e, r.aR), shiftR: r.shiftR, delta: r.delta };
+}
+
+// ---------- Drawing ----------
+function setupCanvas(cv) {
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = +cv.getAttribute("height");
+  cv.style.height = h + "px";
+  if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+function axisText(ctx) { ctx.fillStyle = css("--muted"); ctx.font = "11px " + css("--f-mono"); }
+
+function drawHist() {
+  const { ctx, w, h } = setupCanvas($("cvHist"));
+  const pad = { l: 30, r: 8, t: 8, b: 8 }, iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+  const vals = state.hist.slice(-60).map(toS48);
+  let R = 2; vals.forEach(v => { R = Math.max(R, Math.ceil(Math.abs(v) + 0.5)); }); R = Math.min(R, 50);
+  const y = v => pad.t + ih / 2 - v / R * ih / 2;
+  ctx.fillStyle = css("--ok"); ctx.globalAlpha = 0.16; ctx.fillRect(pad.l, y(1), iw, y(-1) - y(1)); ctx.globalAlpha = 1;
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, y(0)); ctx.lineTo(w - pad.r, y(0)); ctx.stroke();
+  axisText(ctx); ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  [R, 1, 0, -1, -R].filter((v, i, a) => a.indexOf(v) === i).forEach(v => ctx.fillText((v > 0 ? "+" : "") + v, pad.l - 6, y(v)));
+  if (!vals.length) return;
+  const x = i => pad.l + (vals.length === 1 ? iw : i / 59 * iw);
+  ctx.strokeStyle = css("--fg"); ctx.globalAlpha = .35; ctx.beginPath();
+  vals.forEach((v, i) => i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(i), y(v))); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.fillStyle = css("--fg");
+  vals.forEach((v, i) => { ctx.beginPath(); ctx.arc(x(i), y(v), i === vals.length - 1 ? 3.5 : 2, 0, 7); ctx.fill(); });
+}
+
+function drawZoom() {
+  const { ctx, w, h } = setupCanvas($("cvZoom"));
+  const p = state.plot; if (!p) return;
+  const fs = p.fs, x0 = -0.001 * fs, x1 = 0.002 * fs;
+  const pad = { l: 8, r: 8, t: 10, b: 22 }, iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+  let m = 1e-12; for (const a of [p.Lc, p.Rc]) for (let i = 0; i < a.length; i++) m = Math.max(m, Math.abs(a[i]));
+  const X = s => pad.l + (s - x0) / (x1 - x0) * iw, Y = v => pad.t + ih / 2 - v / m * ih * 0.46;
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, Y(0)); ctx.lineTo(w - pad.r, Y(0)); ctx.stroke();
+  axisText(ctx); ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (let ms = -1; ms <= 2; ms += (w > 520 ? 0.5 : 1)) { const s = ms * fs / 1000; ctx.beginPath(); ctx.moveTo(X(s), pad.t); ctx.lineTo(X(s), h - pad.b); ctx.globalAlpha = ms === 0 ? 1 : .4; ctx.stroke(); ctx.globalAlpha = 1; ctx.fillText((ms > 0 ? "+" : "") + ms + " ms", Math.min(w - 24, Math.max(24, X(s))), h - pad.b + 5); }
+  const series = (arr, shift, col) => {
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.6; ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < arr.length; i++) { const s = i - p.pre + shift; if (s < x0 || s > x1) continue; const xx = X(s), yy = Y(arr[i]); started ? ctx.lineTo(xx, yy) : (ctx.moveTo(xx, yy), started = true); }
+    ctx.stroke();
+    if (iw / ((x1 - x0)) > 1.6) for (let i = 0; i < arr.length; i++) { const s = i - p.pre + shift; if (s < x0 || s > x1) continue; ctx.beginPath(); ctx.arc(X(s), Y(arr[i]), 1.8, 0, 7); ctx.fill(); }
+  };
+  series(p.Lc, 0, css("--chL"));
+  series(p.Rc, p.shiftR, css("--chR"));
+}
+
+function drawEnv() {
+  const { ctx, w, h } = setupCanvas($("cvEnv"));
+  const p = state.plot; if (!p) return;
+  const fs = p.fs, x0 = -0.002 * fs, x1 = 0.030 * fs, floor = -50;
+  const pad = { l: 34, r: 8, t: 8, b: 22 }, iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+  let m = 1e-12; for (const a of [p.Le, p.Re]) for (let i = 0; i < a.length; i++) m = Math.max(m, a[i]);
+  const X = s => pad.l + (s - x0) / (x1 - x0) * iw, Y = db => pad.t + (-db) / (-floor) * ih;
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; axisText(ctx);
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let db = 0; db >= floor; db -= 10) { ctx.beginPath(); ctx.moveTo(pad.l, Y(db)); ctx.lineTo(w - pad.r, Y(db)); ctx.globalAlpha = .5; ctx.stroke(); ctx.globalAlpha = 1; ctx.fillText(db, pad.l - 5, Y(db)); }
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (let ms = 0; ms <= 30; ms += 5) ctx.fillText(ms + " ms", Math.min(w - 20, X(ms * fs / 1000)), h - pad.b + 5);
+  const series = (arr, shift, col) => {
+    ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.beginPath(); let started = false;
+    for (let i = 0; i < arr.length; i++) {
+      const s = i - p.pre + shift; if (s < x0 || s > x1) continue;
+      const db = Math.max(floor, 20 * Math.log10(arr[i] / m + 1e-9));
+      started ? ctx.lineTo(X(s), Y(db)) : (ctx.moveTo(X(s), Y(db)), started = true);
+    }
+    ctx.stroke();
+  };
+  series(p.Le, 0, css("--chL"));
+  series(p.Re, p.shiftR, css("--chR"));
+}
+function drawAll() { drawHist(); drawZoom(); drawEnv(); }
+window.addEventListener("resize", drawAll);
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll); } catch (e) {}
+new MutationObserver(drawAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+$("clearBtn").addEventListener("click", () => { state.hist = []; drawHist(); renderReadout(); $("hCount").textContent = ""; });
+
+// Flip correction
+function setFlip(which) {
+  const st = meanLast(10); if (!st) return;
+  state["flip" + which] = st.m; renderFlip();
+}
+function renderFlip() {
+  $("fA").textContent = state.flipA == null ? "—" : fmtS(state.flipA);
+  $("fB").textContent = state.flipB == null ? "—" : fmtS(state.flipB);
+  if (state.flipA != null && state.flipB != null) {
+    const c = (state.flipA + state.flipB) / 2, g = geo(), mm = Math.abs(c / 48000 * g.c * 1000 / g.k);
+    $("fC").textContent = fmtS(c) + (Math.abs(c) < 0.5 ? " ✓" : ` → ${mm.toFixed(1)} mm ${c > 0 ? "right" : "left"}`);
+  } else $("fC").textContent = "—";
+}
+$("flipA").addEventListener("click", () => setFlip("A"));
+$("flipB").addEventListener("click", () => setFlip("B"));
+
+// ---------- Example (synthetic) so the page opens in a working state ----------
+function synth(fs, deltaSamples, seconds, ppm, noise) {
+  const up = makeSweep(fs * (1 + ppm * 1e-6)), dn = reversed(up), n = Math.round(seconds * fs), y = new Float32Array(n);
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5);
+  const per = fs * (1 + ppm * 1e-6) * SIG.P;
+  const add = (x, t0, g) => { const i0 = Math.floor(t0), fr = t0 - i0; for (let i = 0; i < x.length; i++) { const k = i0 + i; if (k >= 0 && k + 1 < n) { y[k] += g * x[i] * (1 - fr); y[k + 1] += g * x[i] * fr; } } };
+  for (let b = 0; b * per < n; b++) {
+    const tL = 2000 + b * per, tR = tL + per / 2 + deltaSamples;
+    add(up, tL, 0.3); add(up, tL + 0.0031 * fs, 0.14); add(up, tL + 0.0072 * fs, 0.08);
+    add(dn, tR, 0.3); add(dn, tR + 0.0034 * fs, 0.12); add(dn, tR + 0.0065 * fs, 0.09);
+  }
+  for (let i = 0; i < n; i++) y[i] += noise * rnd();
+  return y;
+}
+(function example() {
+  const fs = 48000, y = synth(fs, 1.35, 2.2, 18, 0.01), res = analyzeBlock(y, fs);
+  if (res.readings.length) {
+    const r = Object.assign({ fs, snr: res.snr }, res.readings[0]);
+    state.hist = []; pushReading(r, plotFrom(res, res.readings[0]));
+    state.hist = []; $("hCount").textContent = "";
+    drawHist();
+  }
+})();
+
+// ---------- Play ----------
+const play = { ctx: null, node: null, gain: null };
+function updLvl() { $("lvlv").textContent = (+$("lvl").value < 0 ? "−" : "") + Math.abs(+$("lvl").value) + " dBFS"; if (play.gain) play.gain.gain.value = Math.pow(10, +$("lvl").value / 20); store.set("lvl", $("lvl").value); }
+$("lvl").value = store.get("lvl", "-18"); updLvl();
+$("lvl").addEventListener("input", updLvl);
+function fillPeriod(fs) {
+  const n = Math.round(SIG.P * fs), L = new Float32Array(n), R = new Float32Array(n);
+  const up = makeSweep(fs), dn = reversed(up), off = Math.round(n / 2);
+  L.set(up, 0); R.set(dn, off);
+  return { L, R };
+}
+$("playBtn").addEventListener("click", async () => {
+  if (play.node) { play.node.stop(); play.node.disconnect(); play.node = null; $("playBtn").textContent = "Play test signal"; return; }
+  try {
+    if (!play.ctx) play.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await play.ctx.resume();
+    const fs = play.ctx.sampleRate, { L, R } = fillPeriod(fs);
+    const buf = play.ctx.createBuffer(2, L.length, fs);
+    buf.getChannelData(0).set(L); buf.getChannelData(1).set(R);
+    play.gain = play.ctx.createGain(); play.gain.gain.value = Math.pow(10, +$("lvl").value / 20);
+    play.node = play.ctx.createBufferSource(); play.node.buffer = buf; play.node.loop = true;
+    play.node.connect(play.gain); play.gain.connect(play.ctx.destination); play.node.start();
+    $("playBtn").textContent = "Stop";
+    $("playInfo").textContent = `Playing at ${fs} Hz through the current output. The left sweep plays at 0 s and the right at 0.5 s in each one-second loop.`;
+  } catch (e) { $("playInfo").textContent = "Couldn't start audio: " + e.message; }
+});
+
+// WAV + minimal zip (the claude.ai viewer only saves zip, not wav)
+function buildWav(fs, seconds) {
+  const { L, R } = fillPeriod(fs), per = L.length, n = per * seconds, g = Math.pow(10, +$("lvl").value / 20);
+  const buf = new ArrayBuffer(44 + n * 4), dv = new DataView(buf);
+  const w4 = (o, s) => { for (let i = 0; i < 4; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  w4(0, "RIFF"); dv.setUint32(4, 36 + n * 4, true); w4(8, "WAVE"); w4(12, "fmt "); dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true); dv.setUint16(22, 2, true); dv.setUint32(24, fs, true); dv.setUint32(28, fs * 4, true);
+  dv.setUint16(32, 4, true); dv.setUint16(34, 16, true); w4(36, "data"); dv.setUint32(40, n * 4, true);
+  let o = 44, seed = 12345; const rnd = () => (seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296;
+  const q = v => Math.max(-32768, Math.min(32767, Math.round(v * 32767 + (rnd() - rnd()))));
+  for (let i = 0; i < n; i++) { const k = i % per; dv.setInt16(o, q(L[k] * g), true); dv.setInt16(o + 2, q(R[k] * g), true); o += 4; }
+  return new Uint8Array(buf);
+}
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(name, data) {
+  const nm = new TextEncoder().encode(name), crc = crc32(data), sz = data.length;
+  const lh = new DataView(new ArrayBuffer(30)), ch = new DataView(new ArrayBuffer(46)), eo = new DataView(new ArrayBuffer(22));
+  lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, nm.length, true);
+  ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint32(16, crc, true); ch.setUint32(20, sz, true); ch.setUint32(24, sz, true); ch.setUint16(28, nm.length, true);
+  const cdOff = 30 + nm.length + sz, cdSize = 46 + nm.length;
+  eo.setUint32(0, 0x06054b50, true); eo.setUint16(8, 1, true); eo.setUint16(10, 1, true); eo.setUint32(12, cdSize, true); eo.setUint32(16, cdOff, true);
+  return new Blob([lh.buffer, nm, data, ch.buffer, nm, eo.buffer], { type: "application/zip" });
+}
+$("dlBtn").addEventListener("click", async () => {
+  const fs = +$("wavRate").value, name = `sweetspot-test-${fs}.wav`, msg = $("dlMsg");
+  msg.textContent = "Building file…";
+  const wav = buildWav(fs, 60);
+  if (window.claude && typeof window.claude.use === "function") {
+    const dl = await window.claude.use("downloads");
+    if (!dl) { msg.textContent = "Saving files isn't available in this view. Use Play instead."; return; }
+    try { await dl.save({ filename: name.replace(".wav", ".zip"), data: zipStore(name, wav) }); msg.textContent = "Saved as a zip. Unzip it to get the WAV."; }
+    catch (e) { msg.textContent = e && e.code === "declined" ? "Download cancelled." : "Couldn't save the file (" + (e && e.code || "error") + ")."; }
+    return;
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([wav], { type: "audio/wav" })); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); msg.textContent = "Downloaded " + name + ".";
+});
+
+// ---------- Listen ----------
+const live = { on: false };
+const WIN = 2.1;
+function lmsg(t, cls) { const m = $("listenMsg"); m.hidden = !t; m.textContent = t || ""; m.className = "msg" + (cls ? " " + cls : ""); }
+async function startListen() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    lmsg("This browser view can't use the microphone. Open the self-hosted copy of this page in Safari, or use the Recording tab.", "bad"); return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+  } catch (e) {
+    lmsg("The microphone was blocked (" + (e.name || "error") + "). Pages on claude.ai can't use the microphone. Open the self-hosted copy of this page in Safari, or use the Recording tab.", "bad"); return;
+  }
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();
+  const fs = ctx.sampleRate, size = Math.round(fs * 3), ring = new Float32Array(size);
+  const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), mute = ctx.createGain();
+  mute.gain.value = 0; src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  Object.assign(live, { on: true, ctx, stream, proc, src, fs, ring, size, wr: 0, total: 0, peak: 0, lastAt: -1e12 });
+  proc.onaudioprocess = ev => {
+    const d = ev.inputBuffer.getChannelData(0);
+    let pk = 0;
+    for (let i = 0; i < d.length; i++) { ring[live.wr] = d[i]; live.wr = (live.wr + 1) % size; const a = Math.abs(d[i]); if (a > pk) pk = a; }
+    live.total += d.length; live.peak = Math.max(live.peak * 0.9, pk);
+  };
+  live.timer = setInterval(tick, 500);
+  try { live.wake = await navigator.wakeLock.request("screen"); } catch (e) {}
+  $("listenBtn").textContent = "Stop listening";
+  state.source = "live"; $("resSrc").textContent = "Live · mic at " + fs + " Hz";
+  lmsg(`Listening at ${fs} Hz. Start the test signal on the Mac.`);
+}
+function stopListen() {
+  clearInterval(live.timer);
+  try { live.proc.disconnect(); live.src.disconnect(); live.stream.getTracks().forEach(t => t.stop()); live.ctx.close(); } catch (e) {}
+  try { live.wake && live.wake.release(); } catch (e) {}
+  live.on = false; $("listenBtn").textContent = "Start listening"; lmsg("Stopped.");
+}
+function tick() {
+  const db = 20 * Math.log10(live.peak + 1e-9);
+  $("meter").style.width = Math.max(0, Math.min(100, (db + 60) / 60 * 100)) + "%";
+  $("meter").style.background = live.peak > 0.98 ? css("--bad") : css("--chL");
+  $("meterTxt").textContent = live.peak > 0.98 ? "clipping" : db.toFixed(0) + " dBFS";
+  const n = Math.round(WIN * live.fs);
+  if (live.total < n) return;
+  const y = new Float32Array(n), start = (live.wr - n + live.size) % live.size;
+  for (let i = 0; i < n; i++) y[i] = live.ring[(start + i) % live.size];
+  const base = live.total - n, res = analyzeBlock(y, live.fs);
+  if (!res.readings.length) { if (live.peak > 0.003) lmsg("Hearing sound, but no clean left-right-left pattern yet. Check that the test signal is playing and BACCH is off.", ""); return; }
+  lmsg("");
+  for (const r of res.readings) {
+    const abs = base + r.at;
+    if (abs <= live.lastAt + 0.25 * live.fs) continue;
+    live.lastAt = abs;
+    pushReading(Object.assign({ fs: live.fs, snr: res.snr }, r), plotFrom(res, r));
+  }
+}
+$("listenBtn").addEventListener("click", () => live.on ? stopListen() : startListen());
+
+// ---------- File ----------
+function fmsg(t, cls) { const m = $("fileMsg"); m.hidden = !t; m.textContent = t || ""; m.className = "msg" + (cls ? " " + cls : ""); }
+$("fileIn").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  fmsg("Decoding " + f.name + "…");
+  try {
+    const ab = await f.arrayBuffer();
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ctx; try { ctx = new AC({ sampleRate: 48000 }); } catch (_) { ctx = new AC(); }
+    const audio = await new Promise((res, rej) => { const p = ctx.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); });
+    try { ctx.close(); } catch (_) {}
+    const fs = audio.sampleRate, y = audio.getChannelData(0);
+    fmsg(`Analysing ${(y.length / fs).toFixed(1)} s at ${fs} Hz…`);
+    await new Promise(r => setTimeout(r, 30));
+    state.hist = []; let last = -1e12, lastRes = null, lastR = null;
+    const n = Math.round(WIN * fs), hop = Math.round(1.0 * fs);
+    for (let s = 0; s + n <= y.length; s += hop) {
+      const res = analyzeBlock(y.subarray(s, s + n), fs);
+      for (const r of res.readings) {
+        const abs = s + r.at; if (abs <= last + 0.25 * fs) continue; last = abs;
+        state.hist.push(Object.assign({ fs, snr: res.snr }, r)); lastRes = res; lastR = r;
+      }
+    }
+    if (!lastR) { fmsg("No left-right-left pattern found. Check the recording is at least 3 seconds long and the test signal was playing.", "bad"); return; }
+    state.last = state.hist[state.hist.length - 1]; state.plot = plotFrom(lastRes, lastR);
+    state.source = "file"; $("resSrc").textContent = "Recording · " + f.name;
+    const st = meanLast(1e6);
+    fmsg(`${st.n} readings. Mean ${fmtS(st.m)} samples, s.d. ${st.sd.toFixed(2)}.`, "ok");
+    renderReadout(); drawAll();
+  } catch (err) { fmsg("Couldn't read that file (" + (err && err.message || err) + "). Try a WAV or M4A file.", "bad"); }
+});
+</script>
+
+</body></html>
